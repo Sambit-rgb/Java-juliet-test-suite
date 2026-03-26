@@ -1,0 +1,70 @@
+name: SonarCloud analysis (chunked)
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  Analysis:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        cwe:
+          - CWE12*
+          - CWE19*
+          - CWE36*
+          - CWE40*
+          - CWE47*
+          - CWE50*
+          - CWE60*
+          - CWE78*
+          - CWE80*
+          - CWE89*
+          - CWE90*
+
+    steps:
+      # ✅ Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ✅ Setup Java
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # ✅ Download dependencies
+      - name: Download dependencies
+        run: |
+          curl -L -o servlet-api.jar https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/4.0.1/javax.servlet-api-4.0.1.jar
+          curl -L -o commons-lang.jar https://repo1.maven.org/maven2/commons-lang/commons-lang/2.6/commons-lang-2.6.jar
+          curl -L -o javax-mail.jar https://repo1.maven.org/maven2/com/sun/mail/javax.mail/1.6.2/javax.mail-1.6.2.jar
+          curl -L -o commons-codec.jar https://repo1.maven.org/maven2/commons-codec/commons-codec/1.15/commons-codec-1.15.jar
+
+      # ✅ Compile ALL sources (including testcasesupport)
+      - name: Compile Java sources
+        run: |
+          mkdir -p target/classes
+          find src -name "*.java" > sources.txt
+          javac -cp "servlet-api.jar:commons-lang.jar:javax-mail.jar:commons-codec.jar" -d target/classes @sources.txt
+
+      # ✅ Run SonarCloud (chunked to avoid OOM)
+      - name: Run SonarCloud
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_SCANNER_OPTS: "-Xmx4g"
+        with:
+          args: >
+            -Dsonar.projectKey=Sambit-rgb_Java-juliet-test-suite
+            -Dsonar.organization=sambit-rgb
+            -Dsonar.sources=src
+            -Dsonar.java.binaries=target/classes
+            -Dsonar.inclusions=src/testcases/${{ matrix.cwe }}/**/*.java
+            -Dsonar.exclusions=**/CWE506_Embedded_Malicious_Code/**
+            -Dsonar.host.url=https://sonarcloud.io
